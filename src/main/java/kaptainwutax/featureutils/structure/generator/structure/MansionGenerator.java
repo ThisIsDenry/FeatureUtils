@@ -32,6 +32,10 @@ public class MansionGenerator extends Generator {
 
 	}
 
+	public void reset() {
+		this.globalPieces.clear();
+	}
+
 	public List<MansionPiece> getPieces() {
 		return globalPieces;
 	}
@@ -60,7 +64,6 @@ public class MansionGenerator extends Generator {
 	}
 
 	public boolean start(BPos start, BlockRotation rotation, List<MansionPiece> mansionPieces, ChunkRand chunkRand) {
-		// TODO: figure out if this actually works
 		Random rand = new Random(chunkRand.getSeed() ^ 0x5DEECE66DL);
 		Grid grid = new Grid(rand);
 		Placer placer = new Placer(rand);
@@ -430,6 +433,8 @@ public class MansionGenerator extends Generator {
 
 			SimpleGrid baseGrid = grid.baseGrid;
 			SimpleGrid thirdFloorGrid = grid.thirdFloorGrid;
+			this.startX = grid.entranceX + 1;
+			this.startZ = grid.entranceZ + 1;
 
 			RoomCollection[] roomCollection = new RoomCollection[]{new FirstFloor(), new SecondFloor(), new ThirdFloor()};
 
@@ -439,13 +444,13 @@ public class MansionGenerator extends Generator {
 				SimpleGrid baseFloorGrid = floorIndex == 2 ? thirdFloorGrid : baseGrid;
 
 				// Indoor Walls + Rooms
-				String s2 = floorIndex == 0 ? "indoors_wall_1" : "indoors_wall_2";
-				String s3 = floorIndex == 0 ? "indoors_door_1" : "indoors_door_2";
+				// String s2 = floorIndex == 0 ? "indoors_wall_1" : "indoors_wall_2";
+				// String s3 = floorIndex == 0 ? "indoors_door_1" : "indoors_door_2";
 				List<Direction> doorways = new ArrayList<>();
 				for(int gridZ = 0; gridZ < baseFloorGrid.height; ++gridZ) {
 					for(int gridX = 0; gridX < baseFloorGrid.width; ++gridX) {
 						boolean thirdFloorStart = floorIndex == 2 && baseFloorGrid.get(gridX, gridZ) == BaseRoomFlag.START;
-						if (baseFloorGrid.get(gridX, gridZ) == 2 || thirdFloorStart) {
+						if (baseFloorGrid.get(gridX, gridZ) == BaseRoomFlag.ROOM || thirdFloorStart) {
 							int gridFlag = floorGrid.get(gridX, gridZ);
 							int roomSize = gridFlag & RoomGroupFlag.ROOM_SIZE;
 							int roomId = gridFlag & '\uffff';
@@ -469,6 +474,7 @@ public class MansionGenerator extends Generator {
 							// TODO: figure out if we need this
 							BPos nextBPos = bPos.relative(rotation.rotate(BlockDirection.SOUTH), 8 + (gridZ - this.startZ) * 8);
 							nextBPos = nextBPos.relative(rotation.rotate(BlockDirection.EAST), -1 + (gridX - this.startX) * 8);
+							/*
 							if (Grid.isHouse(baseFloorGrid, gridX - 1, gridZ) && !grid.isRoomId(baseFloorGrid, gridX - 1, gridZ, floorIndex, roomId)) {
 								//pieces.add(new WoodlandMansionPieces.MansionTemplate(this.structureManager, doorDirection == Direction.WEST ? s3 : s2, nextBPos, rotation));
 								String template = doorDirection == Direction.WEST ? s3 : s2;
@@ -497,6 +503,8 @@ public class MansionGenerator extends Generator {
 								String template = doorDirection == Direction.NORTH ? s3 : s2;
 								//System.out.println("new Mansion Template: " + template + doorBPos.toString() + rotation.toString());
 							}
+
+							 */
 
 							if (roomSize == RoomGroupFlag._1x1FLAG) {
 								this.addRoom1x1(mansionPieces, nextBPos, rotation, doorDirection, roomCollection[floorIndex]);

@@ -8,19 +8,14 @@ import kaptainwutax.mcutils.util.block.BlockDirection;
 import kaptainwutax.mcutils.util.block.BlockMirror;
 import kaptainwutax.mcutils.util.block.BlockRotation;
 import kaptainwutax.mcutils.util.data.Pair;
-import kaptainwutax.mcutils.util.math.Vec3i;
 import kaptainwutax.mcutils.util.pos.BPos;
 import kaptainwutax.mcutils.version.MCVersion;
 import kaptainwutax.terrainutils.TerrainGenerator;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
-import java.util.stream.Collectors;
 
 public class MansionGenerator extends Generator {
 
@@ -40,18 +35,6 @@ public class MansionGenerator extends Generator {
 		return globalPieces;
 	}
 
-	public void printGlobalPieces() {
-		for(MansionPiece mansionPiece : globalPieces) {
-			System.out.println(mansionPiece.getTemplate());
-		}
-	}
-
-	public void printGlobalCommonNames() {
-		for(MansionPiece mansionPiece : globalPieces) {
-			System.out.println(COMMON_NAMES.get(mansionPiece.getTemplate()));
-		}
-	}
-
 	@Override
 	public boolean generate(TerrainGenerator generator, int chunkX, int chunkZ, ChunkRand rand) {
 		if (generator == null) return false;
@@ -64,9 +47,8 @@ public class MansionGenerator extends Generator {
 	}
 
 	public boolean start(BPos start, BlockRotation rotation, List<MansionPiece> mansionPieces, ChunkRand chunkRand) {
-		Random rand = new Random(chunkRand.getSeed() ^ 0x5DEECE66DL);
-		Grid grid = new Grid(rand);
-		Placer placer = new Placer(rand);
+		Grid grid = new Grid(chunkRand);
+		Placer placer = new Placer(chunkRand);
 		placer.createMansion(start, rotation, mansionPieces, grid);
 		return true;
 	}
@@ -132,14 +114,14 @@ public class MansionGenerator extends Generator {
 	}
 
 	static class Grid {
-		private final Random random;
+		private final ChunkRand random;
 		private final SimpleGrid baseGrid;
 		private final SimpleGrid thirdFloorGrid;
 		private final SimpleGrid[] floorGrids;
 		private final int entranceX;
 		private final int entranceZ;
 
-		public Grid(Random random) {
+		public Grid(ChunkRand random) {
 			this.random = random;
 			this.entranceX = 7;
 			this.entranceZ = 4;
@@ -153,10 +135,10 @@ public class MansionGenerator extends Generator {
 			this.baseGrid.set(this.entranceX - 1, this.entranceZ + 2, BaseRoomFlag.CORRIDOR);
 			this.baseGrid.set(0, 0, 11, 1, BaseRoomFlag.OUTSIDE);
 			this.baseGrid.set(0, 9, 11, 11, BaseRoomFlag.OUTSIDE);
-			this.recursiveCorridor(this.baseGrid, this.entranceX, this.entranceZ - 2, Direction.WEST, 6);
-			this.recursiveCorridor(this.baseGrid, this.entranceX, this.entranceZ + 3, Direction.WEST, 6);
-			this.recursiveCorridor(this.baseGrid, this.entranceX - 2, this.entranceZ - 1, Direction.WEST, BaseRoomFlag.START);
-			this.recursiveCorridor(this.baseGrid, this.entranceX - 2, this.entranceZ + 2, Direction.WEST, BaseRoomFlag.START);
+			this.recursiveCorridor(this.baseGrid, this.entranceX, this.entranceZ - 2, BlockDirection.WEST, 6);
+			this.recursiveCorridor(this.baseGrid, this.entranceX, this.entranceZ + 3, BlockDirection.WEST, 6);
+			this.recursiveCorridor(this.baseGrid, this.entranceX - 2, this.entranceZ - 1, BlockDirection.WEST, BaseRoomFlag.START);
+			this.recursiveCorridor(this.baseGrid, this.entranceX - 2, this.entranceZ + 2, BlockDirection.WEST, BaseRoomFlag.START);
 
 			while(this.cleanEdges(this.baseGrid)) {
 			}
@@ -167,8 +149,8 @@ public class MansionGenerator extends Generator {
 			this.floorGrids[2] = new SimpleGrid(11, 11, BaseRoomFlag.OUTSIDE);
 			this.identifyRooms(this.baseGrid, this.floorGrids[0]);
 			this.identifyRooms(this.baseGrid, this.floorGrids[1]);
-			this.floorGrids[0].set(this.entranceX + 1, this.entranceZ, this.entranceX + 1, this.entranceZ + 1, 8388608);
-			this.floorGrids[1].set(this.entranceX + 1, this.entranceZ, this.entranceX + 1, this.entranceZ + 1, 8388608);
+			this.floorGrids[0].set(this.entranceX + 1, this.entranceZ, this.entranceX + 1, this.entranceZ + 1, RoomGroupFlag.ENTRANCE);
+			this.floorGrids[1].set(this.entranceX + 1, this.entranceZ, this.entranceX + 1, this.entranceZ + 1, RoomGroupFlag.ENTRANCE);
 			this.thirdFloorGrid = new SimpleGrid(this.baseGrid.width, this.baseGrid.height, BaseRoomFlag.OUTSIDE);
 			this.setupThirdFloor();
 			this.identifyRooms(this.thirdFloorGrid, this.floorGrids[2]);
@@ -184,9 +166,9 @@ public class MansionGenerator extends Generator {
 		}
 
 		@Nullable
-		public Direction get1x2RoomDirection(SimpleGrid baseGrid, int gridX, int gridZ, int floorRoomIndex, int value) {
-			for(Direction direction : Direction.HORIZONTALS) {
-				if (this.isRoomId(baseGrid, gridX + direction.getStepX(), gridZ + direction.getStepZ(), floorRoomIndex, value)) {
+		public BlockDirection get1x2RoomDirection(SimpleGrid baseGrid, int gridX, int gridZ, int floorRoomIndex, int value) {
+			for(BlockDirection direction : BlockDirection.getHorizontal()) {
+				if (this.isRoomId(baseGrid, gridX + direction.getVector().getX(), gridZ + direction.getVector().getZ(), floorRoomIndex, value)) {
 					return direction;
 				}
 			}
@@ -194,32 +176,34 @@ public class MansionGenerator extends Generator {
 			return null;
 		}
 
-		private void recursiveCorridor(SimpleGrid baseGrid, int gridX, int gridZ, Direction direction, int genDepth) {
+		private void recursiveCorridor(SimpleGrid baseGrid, int gridX, int gridZ, BlockDirection direction, int genDepth) {
 			if (genDepth > 0) {
 				baseGrid.set(gridX, gridZ, BaseRoomFlag.CORRIDOR);
-				baseGrid.setif(gridX + direction.getStepX(), gridZ + direction.getStepZ(), 0, BaseRoomFlag.CORRIDOR);
+				baseGrid.setif(gridX + direction.getVector().getX(), gridZ + direction.getVector().getZ(), 0, BaseRoomFlag.CORRIDOR);
 
 				for(int i = 0; i < 8; ++i) {
-					Direction newDirection = Direction.from2DDataValue(this.random.nextInt(4));
-					if (newDirection != direction.getOpposite() && (newDirection != Direction.EAST || !this.random.nextBoolean())) {
-						int stepX = gridX + direction.getStepX();
-						int stepZ = gridZ + direction.getStepZ();
-						if (baseGrid.get(stepX + newDirection.getStepX(), stepZ + newDirection.getStepZ()) == 0 && baseGrid.get(stepX + newDirection.getStepX() * 2, stepZ + newDirection.getStepZ() * 2) == 0) {
-							this.recursiveCorridor(baseGrid, gridX + direction.getStepX() + newDirection.getStepX(), gridZ + direction.getStepZ() + newDirection.getStepZ(), newDirection, genDepth - 1);
+					BlockDirection newDirection = BlockDirection.get2d()[this.random.nextInt(4)];
+					if (newDirection != direction.getOpposite() && (newDirection != BlockDirection.EAST || !this.random.nextBoolean())) {
+						int stepX = gridX + direction.getVector().getX();
+						int stepZ = gridZ + direction.getVector().getZ();
+						if (baseGrid.get(stepX + newDirection.getVector().getX(), stepZ + newDirection.getVector().getZ()) == 0 && baseGrid.get(stepX + newDirection.getVector().getX() * 2,
+							stepZ + newDirection.getVector().getZ() * 2) == 0) {
+							this.recursiveCorridor(baseGrid, gridX + direction.getVector().getX() + newDirection.getVector().getX(),
+								gridZ + direction.getVector().getZ() + newDirection.getVector().getZ(), newDirection, genDepth - 1);
 							break;
 						}
 					}
 				}
 
-				Direction cw = direction.getClockWise();
-				Direction ccw = direction.getCounterClockWise();
-				baseGrid.setif(gridX + cw.getStepX(), gridZ + cw.getStepZ(), 0, 2);
-				baseGrid.setif(gridX + ccw.getStepX(), gridZ + ccw.getStepZ(), 0, 2);
-				baseGrid.setif(gridX + direction.getStepX() + cw.getStepX(), gridZ + direction.getStepZ() + cw.getStepZ(), 0, 2);
-				baseGrid.setif(gridX + direction.getStepX() + ccw.getStepX(), gridZ + direction.getStepZ() + ccw.getStepZ(), 0, 2);
-				baseGrid.setif(gridX + direction.getStepX() * 2, gridZ + direction.getStepZ() * 2, 0, 2);
-				baseGrid.setif(gridX + cw.getStepX() * 2, gridZ + cw.getStepZ() * 2, 0, 2);
-				baseGrid.setif(gridX + ccw.getStepX() * 2, gridZ + ccw.getStepZ() * 2, 0, 2);
+				BlockDirection cw = direction.getClockWise();
+				BlockDirection ccw = direction.getCounterClockWise();
+				baseGrid.setif(gridX + cw.getVector().getX(), gridZ + cw.getVector().getZ(), 0, 2);
+				baseGrid.setif(gridX + ccw.getVector().getX(), gridZ + ccw.getVector().getZ(), 0, 2);
+				baseGrid.setif(gridX + direction.getVector().getX() + cw.getVector().getX(), gridZ + direction.getVector().getZ() + cw.getVector().getZ(), 0, 2);
+				baseGrid.setif(gridX + direction.getVector().getX() + ccw.getVector().getX(), gridZ + direction.getVector().getZ() + ccw.getVector().getZ(), 0, 2);
+				baseGrid.setif(gridX + direction.getVector().getX() * 2, gridZ + direction.getVector().getZ() * 2, 0, 2);
+				baseGrid.setif(gridX + cw.getVector().getX() * 2, gridZ + cw.getVector().getZ() * 2, 0, 2);
+				baseGrid.setif(gridX + ccw.getVector().getX() * 2, gridZ + ccw.getVector().getZ() * 2, 0, 2);
 			}
 		}
 
@@ -255,58 +239,57 @@ public class MansionGenerator extends Generator {
 			return flag;
 		}
 
-		// TODO: make not ugly
 		private void setupThirdFloor() {
-			List<Pair<Integer, Integer>> list = new ArrayList<>();
-			SimpleGrid simpleGrid = this.floorGrids[1];
+			List<Pair<Integer, Integer>> secret1x2 = new ArrayList<>();
+			SimpleGrid secondFloorGrid = this.floorGrids[1];
 
-			for(int i = 0; i < this.thirdFloorGrid.height; ++i) {
-				for(int j = 0; j < this.thirdFloorGrid.width; ++j) {
-					int k = simpleGrid.get(j, i);
-					int l = k & 983040;
-					if (l == 131072 && (k & 2097152) == 2097152) {
-						list.add(new Pair<>(j, i));
+			for(int gridZ = 0; gridZ < this.thirdFloorGrid.height; ++gridZ) {
+				for(int gridX = 0; gridX < this.thirdFloorGrid.width; ++gridX) {
+					int flag = secondFloorGrid.get(gridX, gridZ);
+					int roomSize = flag & RoomGroupFlag.ROOM_SIZE;
+					if (roomSize == RoomGroupFlag._1x2FLAG && (flag & RoomGroupFlag.SECRET) == RoomGroupFlag.SECRET) {
+						secret1x2.add(new Pair<>(gridX, gridZ));
 					}
 				}
 			}
 
-			if (list.isEmpty()) {
+			if (secret1x2.isEmpty()) {
 				this.thirdFloorGrid.set(0, 0, this.thirdFloorGrid.width, this.thirdFloorGrid.height, 5);
 			} else {
-				Pair<Integer, Integer> randomPos = list.get(this.random.nextInt(list.size()));
-				int l1 = simpleGrid.get(randomPos.getFirst(), randomPos.getSecond());
-				simpleGrid.set(randomPos.getFirst(), randomPos.getSecond(), l1 | 4194304);
-				Direction direction1 = this.get1x2RoomDirection(this.baseGrid, randomPos.getFirst(), randomPos.getSecond(), 1, l1 & '\uffff');
-				int i2 = randomPos.getFirst() + direction1.getStepX();
-				int i1 = randomPos.getSecond() + direction1.getStepZ();
+				Pair<Integer, Integer> randomPos = secret1x2.get(this.random.nextInt(secret1x2.size()));
+				int flag = secondFloorGrid.get(randomPos.getFirst(), randomPos.getSecond());
+				secondFloorGrid.set(randomPos.getFirst(), randomPos.getSecond(), flag | RoomGroupFlag.STAIRS);
+				BlockDirection roomDirection = this.get1x2RoomDirection(this.baseGrid, randomPos.getFirst(), randomPos.getSecond(), 1, flag & '\uffff');
+				int gridX = randomPos.getFirst() + roomDirection.getVector().getX();
+				int gridZ = randomPos.getSecond() + roomDirection.getVector().getZ();
 
-				for(int j1 = 0; j1 < this.thirdFloorGrid.height; ++j1) {
-					for(int k1 = 0; k1 < this.thirdFloorGrid.width; ++k1) {
-						if (!isHouse(this.baseGrid, k1, j1)) {
-							this.thirdFloorGrid.set(k1, j1, 5);
-						} else if (k1 == randomPos.getFirst() && j1 == randomPos.getSecond()) {
-							this.thirdFloorGrid.set(k1, j1, 3);
-						} else if (k1 == i2 && j1 == i1) {
-							this.thirdFloorGrid.set(k1, j1, 3);
-							this.floorGrids[2].set(k1, j1, 8388608);
+				for(int thirdFloorX = 0; thirdFloorX < this.thirdFloorGrid.height; ++thirdFloorX) {
+					for(int thirdFloorZ = 0; thirdFloorZ < this.thirdFloorGrid.width; ++thirdFloorZ) {
+						if (!isHouse(this.baseGrid, thirdFloorZ, thirdFloorX)) {
+							this.thirdFloorGrid.set(thirdFloorZ, thirdFloorX, BaseRoomFlag.OUTSIDE);
+						} else if (thirdFloorZ == randomPos.getFirst() && thirdFloorX == randomPos.getSecond()) {
+							this.thirdFloorGrid.set(thirdFloorZ, thirdFloorX, BaseRoomFlag.START);
+						} else if (thirdFloorZ == gridX && thirdFloorX == gridZ) {
+							this.thirdFloorGrid.set(thirdFloorZ, thirdFloorX, BaseRoomFlag.START);
+							this.floorGrids[2].set(thirdFloorZ, thirdFloorX, RoomGroupFlag.ENTRANCE);
 						}
 					}
 				}
 
-				List<Direction> list1 = new ArrayList<>();
+				List<BlockDirection> unsetDirections = new ArrayList<>();
 
-				for(Direction direction : Direction.HORIZONTALS) {
-					if (this.thirdFloorGrid.get(i2 + direction.getStepX(), i1 + direction.getStepZ()) == 0) {
-						list1.add(direction);
+				for(BlockDirection direction : BlockDirection.getHorizontal()) {
+					if (this.thirdFloorGrid.get(gridX + direction.getVector().getX(), gridZ + direction.getVector().getZ()) == 0) {
+						unsetDirections.add(direction);
 					}
 				}
 
-				if (list1.isEmpty()) {
-					this.thirdFloorGrid.set(0, 0, this.thirdFloorGrid.width, this.thirdFloorGrid.height, 5);
-					simpleGrid.set(randomPos.getFirst(), randomPos.getSecond(), l1);
+				if (unsetDirections.isEmpty()) {
+					this.thirdFloorGrid.set(0, 0, this.thirdFloorGrid.width, this.thirdFloorGrid.height, BaseRoomFlag.OUTSIDE);
+					secondFloorGrid.set(randomPos.getFirst(), randomPos.getSecond(), flag);
 				} else {
-					Direction direction2 = list1.get(this.random.nextInt(list1.size()));
-					this.recursiveCorridor(this.thirdFloorGrid, i2 + direction2.getStepX(), i1 + direction2.getStepZ(), direction2, 4);
+					BlockDirection randomUnsetDirection = unsetDirections.get(this.random.nextInt(unsetDirections.size()));
+					this.recursiveCorridor(this.thirdFloorGrid, gridX + randomUnsetDirection.getVector().getX(), gridZ + randomUnsetDirection.getVector().getZ(), randomUnsetDirection, 4);
 
 					while(this.cleanEdges(this.thirdFloorGrid)) {
 					}
@@ -326,7 +309,7 @@ public class MansionGenerator extends Generator {
 				}
 			}
 
-			Collections.shuffle(rooms, this.random);
+			this.random.shuffle(rooms);
 			int roomCount = 10;
 
 			for(Pair<Integer, Integer> tuple : rooms) {
@@ -421,11 +404,11 @@ public class MansionGenerator extends Generator {
 	}
 
 	static class Placer {
-		private final Random random;
+		private final ChunkRand random;
 		private int startX;
 		private int startZ;
 
-		public Placer(Random random) {
+		public Placer(ChunkRand random) {
 			this.random = random;
 		}
 
@@ -443,10 +426,7 @@ public class MansionGenerator extends Generator {
 				SimpleGrid floorGrid = grid.floorGrids[floorIndex];
 				SimpleGrid baseFloorGrid = floorIndex == 2 ? thirdFloorGrid : baseGrid;
 
-				// Indoor Walls + Rooms
-				// String s2 = floorIndex == 0 ? "indoors_wall_1" : "indoors_wall_2";
-				// String s3 = floorIndex == 0 ? "indoors_door_1" : "indoors_door_2";
-				List<Direction> doorways = new ArrayList<>();
+				List<BlockDirection> doorways = new ArrayList<>();
 				for(int gridZ = 0; gridZ < baseFloorGrid.height; ++gridZ) {
 					for(int gridX = 0; gridX < baseFloorGrid.width; ++gridX) {
 						boolean thirdFloorStart = floorIndex == 2 && baseFloorGrid.get(gridX, gridZ) == BaseRoomFlag.START;
@@ -454,71 +434,38 @@ public class MansionGenerator extends Generator {
 							int gridFlag = floorGrid.get(gridX, gridZ);
 							int roomSize = gridFlag & RoomGroupFlag.ROOM_SIZE;
 							int roomId = gridFlag & '\uffff';
-							thirdFloorStart = thirdFloorStart && (gridFlag & RoomGroupFlag.ENTRANCE) == RoomGroupFlag.ENTRANCE;
 							doorways.clear();
 							if ((gridFlag & RoomGroupFlag.SECRET) == RoomGroupFlag.SECRET) {
-								for(Direction direction : Direction.HORIZONTALS) {
-									if (baseFloorGrid.get(gridX + direction.getStepX(), gridZ + direction.getStepZ()) == BaseRoomFlag.CORRIDOR) {
+								for(BlockDirection direction : BlockDirection.getHorizontal()) {
+									if (baseFloorGrid.get(gridX + direction.getVector().getX(), gridZ + direction.getVector().getZ()) == BaseRoomFlag.CORRIDOR) {
 										doorways.add(direction);
 									}
 								}
 							}
 
-							Direction doorDirection = null;
+							BlockDirection doorDirection = null;
 							if (!doorways.isEmpty()) {
 								doorDirection = doorways.get(this.random.nextInt(doorways.size()));
 							} else if ((gridFlag & RoomGroupFlag.START) == RoomGroupFlag.START) {
-								doorDirection = Direction.UP;
+								doorDirection = BlockDirection.UP;
 							}
 
-							// TODO: figure out if we need this
 							BPos nextBPos = bPos.relative(rotation.rotate(BlockDirection.SOUTH), 8 + (gridZ - this.startZ) * 8);
 							nextBPos = nextBPos.relative(rotation.rotate(BlockDirection.EAST), -1 + (gridX - this.startX) * 8);
-							/*
-							if (Grid.isHouse(baseFloorGrid, gridX - 1, gridZ) && !grid.isRoomId(baseFloorGrid, gridX - 1, gridZ, floorIndex, roomId)) {
-								//pieces.add(new WoodlandMansionPieces.MansionTemplate(this.structureManager, doorDirection == Direction.WEST ? s3 : s2, nextBPos, rotation));
-								String template = doorDirection == Direction.WEST ? s3 : s2;
-								//System.out.println("new Mansion Template: " + template + nextBPos.toString() + rotation.toString());
-							}
-
-							if (baseFloorGrid.get(gridX + 1, gridZ) == BaseRoomFlag.CORRIDOR && !thirdFloorStart) {
-								BPos doorBPos = nextBPos.relative(rotation.rotate(BlockDirection.EAST), 8);
-								//pieces.add(new WoodlandMansionPieces.MansionTemplate(this.structureManager, doorDirection == Direction.EAST ? s3 : s2, doorBPos, rotation));
-								String template = doorDirection == Direction.EAST ? s3 : s2;
-								//System.out.println("new Mansion Template: " + template + doorBPos.toString() + rotation.toString());
-							}
-
-							if (Grid.isHouse(baseFloorGrid, gridX, gridZ + 1) && !grid.isRoomId(baseFloorGrid, gridX, gridZ + 1, floorIndex, roomId)) {
-								BPos doorBPos = nextBPos.relative(rotation.rotate(BlockDirection.SOUTH), 7);
-								doorBPos = doorBPos.relative(rotation.rotate(BlockDirection.EAST), 7);
-								//pieces.add(new WoodlandMansionPieces.MansionTemplate(this.structureManager, doorDirection == Direction.SOUTH ? s3 : s2, doorBPos, rotation.getRotated(Rotation.CLOCKWISE_90)));
-								String template = doorDirection == Direction.SOUTH ? s3 : s2;
-								//System.out.println("new Mansion Template: " + template + doorBPos.toString() + rotation.toString());
-							}
-
-							if (baseFloorGrid.get(gridX, gridZ - 1) == 1 && !thirdFloorStart) {
-								BPos doorBPos = nextBPos.relative(rotation.rotate(BlockDirection.NORTH), 1);
-								doorBPos = doorBPos.relative(rotation.rotate(BlockDirection.EAST), 7);
-								//pieces.add(new WoodlandMansionPieces.MansionTemplate(this.structureManager, doorDirection == Direction.NORTH ? s3 : s2, doorBPos, rotation.getRotated(Rotation.CLOCKWISE_90)));
-								String template = doorDirection == Direction.NORTH ? s3 : s2;
-								//System.out.println("new Mansion Template: " + template + doorBPos.toString() + rotation.toString());
-							}
-
-							 */
 
 							if (roomSize == RoomGroupFlag._1x1FLAG) {
 								this.addRoom1x1(mansionPieces, nextBPos, rotation, doorDirection, roomCollection[floorIndex]);
 							} else if (roomSize == RoomGroupFlag._1x2FLAG && doorDirection != null) {
-								Direction roomDirection = grid.get1x2RoomDirection(baseFloorGrid, gridX, gridZ, floorIndex, roomId);
+								BlockDirection roomDirection = grid.get1x2RoomDirection(baseFloorGrid, gridX, gridZ, floorIndex, roomId);
 								boolean flag2 = (gridFlag & RoomGroupFlag.STAIRS) == RoomGroupFlag.STAIRS;
 								this.addRoom1x2(mansionPieces, nextBPos, rotation, roomDirection, doorDirection, roomCollection[floorIndex], flag2);
-							} else if (roomSize == RoomGroupFlag._2x2FLAG && doorDirection != null && doorDirection != Direction.UP) {
-								Direction roomDirection = doorDirection.getClockWise();
-								if (!grid.isRoomId(baseFloorGrid, gridX + roomDirection.getStepX(), gridZ + roomDirection.getStepZ(), floorIndex, roomId)) {
+							} else if (roomSize == RoomGroupFlag._2x2FLAG && doorDirection != null && doorDirection != BlockDirection.UP) {
+								BlockDirection roomDirection = doorDirection.getClockWise();
+								if (!grid.isRoomId(baseFloorGrid, gridX + roomDirection.getVector().getX(), gridZ + roomDirection.getVector().getZ(), floorIndex, roomId)) {
 									roomDirection = roomDirection.getOpposite();
 								}
 								this.addRoom2x2(mansionPieces, nextBPos, rotation, roomDirection, doorDirection, roomCollection[floorIndex]);
-							} else if (roomSize == RoomGroupFlag._2x2FLAG && doorDirection == Direction.UP) {
+							} else if (roomSize == RoomGroupFlag._2x2FLAG && doorDirection == BlockDirection.UP) {
 								this.addRoom2x2Secret(mansionPieces, nextBPos, rotation, roomCollection[floorIndex]);
 							}
 						}
@@ -527,15 +474,15 @@ public class MansionGenerator extends Generator {
 			}
 		}
 
-		private void addRoom1x1(List<MansionPiece> mansionPieces, BPos start, BlockRotation rotation, Direction roomDirection, RoomCollection roomCollection) {
+		private void addRoom1x1(List<MansionPiece> mansionPieces, BPos start, BlockRotation rotation, BlockDirection roomDirection, RoomCollection roomCollection) {
 			BlockRotation defaultRotation = BlockRotation.NONE;
 			String template = roomCollection.get1x1(this.random);
-			if (roomDirection != Direction.EAST) {
-				if (roomDirection == Direction.NORTH) {
+			if (roomDirection != BlockDirection.EAST) {
+				if (roomDirection == BlockDirection.NORTH) {
 					defaultRotation = defaultRotation.getRotated(BlockRotation.COUNTERCLOCKWISE_90);
-				} else if (roomDirection == Direction.WEST) {
+				} else if (roomDirection == BlockDirection.WEST) {
 					defaultRotation = defaultRotation.getRotated(BlockRotation.CLOCKWISE_180);
-				} else if (roomDirection == Direction.SOUTH) {
+				} else if (roomDirection == BlockDirection.SOUTH) {
 					defaultRotation = defaultRotation.getRotated(BlockRotation.CLOCKWISE_90);
 				} else {
 					template = roomCollection.get1x1Secret(this.random);
@@ -545,61 +492,60 @@ public class MansionGenerator extends Generator {
 			BPos getZeroPos = MansionPiece.getZeroPositionWithTransform(new BPos(1, 0, 0), BlockMirror.NONE, defaultRotation, 7, 7);
 			defaultRotation = defaultRotation.getRotated(rotation);
 
-			// TODO: validate this
 			getZeroPos = getZeroPos.transform(BlockMirror.NONE, rotation, new BPos(0,getZeroPos.getY(),0));
 			BPos finalBPos = start.add(getZeroPos.getX(), 0, getZeroPos.getZ());
 			mansionPieces.add(new MansionPiece(template, finalBPos, defaultRotation, BlockMirror.NONE, roomCollection.getFloorNumber()));
 
 		}
 
-		private void addRoom1x2(List<MansionPiece> mansionPieces, BPos start, BlockRotation rotation, Direction roomDirection, Direction doorDirection, RoomCollection roomCollection, boolean isStairs) {
-			if (doorDirection == Direction.EAST && roomDirection == Direction.SOUTH) {
+		private void addRoom1x2(List<MansionPiece> mansionPieces, BPos start, BlockRotation rotation, BlockDirection roomDirection, BlockDirection doorDirection, RoomCollection roomCollection, boolean isStairs) {
+			if (doorDirection == BlockDirection.EAST && roomDirection == BlockDirection.SOUTH) {
 				BPos finalBPos = start.relative(rotation.rotate(BlockDirection.EAST), 1);
 				mansionPieces.add(new MansionPiece(roomCollection.get1x2SideEntrance(this.random, isStairs), finalBPos, rotation, BlockMirror.NONE, roomCollection.getFloorNumber()));
-			} else if (doorDirection == Direction.EAST && roomDirection == Direction.NORTH) {
+			} else if (doorDirection == BlockDirection.EAST && roomDirection == BlockDirection.NORTH) {
 				BPos finalBPos = start.relative(rotation.rotate(BlockDirection.EAST), 1);
 				finalBPos = finalBPos.relative(rotation.rotate(BlockDirection.SOUTH), 6);
 				mansionPieces.add(new MansionPiece(roomCollection.get1x2SideEntrance(this.random, isStairs), finalBPos, rotation, BlockMirror.LEFT_RIGHT, roomCollection.getFloorNumber()));
-			} else if (doorDirection == Direction.WEST && roomDirection == Direction.NORTH) {
+			} else if (doorDirection == BlockDirection.WEST && roomDirection == BlockDirection.NORTH) {
 				BPos finalBPos = start.relative(rotation.rotate(BlockDirection.EAST), 7);
 				finalBPos = finalBPos.relative(rotation.rotate(BlockDirection.SOUTH), 6);
 				mansionPieces.add(new MansionPiece(roomCollection.get1x2SideEntrance(this.random, isStairs), finalBPos, rotation.getRotated(BlockRotation.CLOCKWISE_180), BlockMirror.NONE, roomCollection.getFloorNumber()));
-			} else if (doorDirection == Direction.WEST && roomDirection == Direction.SOUTH) {
+			} else if (doorDirection == BlockDirection.WEST && roomDirection == BlockDirection.SOUTH) {
 				BPos finalBPos = start.relative(rotation.rotate(BlockDirection.EAST), 7);
 				mansionPieces.add(new MansionPiece(roomCollection.get1x2SideEntrance(this.random, isStairs), finalBPos, rotation, BlockMirror.FRONT_BACK, roomCollection.getFloorNumber()));
-			} else if (doorDirection == Direction.SOUTH && roomDirection == Direction.EAST) {
+			} else if (doorDirection == BlockDirection.SOUTH && roomDirection == BlockDirection.EAST) {
 				BPos finalBPos = start.relative(rotation.rotate(BlockDirection.EAST), 1);
 				mansionPieces.add(new MansionPiece(roomCollection.get1x2SideEntrance(this.random, isStairs), finalBPos, rotation.getRotated(BlockRotation.CLOCKWISE_90), BlockMirror.LEFT_RIGHT, roomCollection.getFloorNumber()));
-			} else if (doorDirection == Direction.SOUTH && roomDirection == Direction.WEST) {
+			} else if (doorDirection == BlockDirection.SOUTH && roomDirection == BlockDirection.WEST) {
 				BPos finalBPos = start.relative(rotation.rotate(BlockDirection.EAST), 7);
 				mansionPieces.add(new MansionPiece(roomCollection.get1x2SideEntrance(this.random, isStairs), finalBPos, rotation.getRotated(BlockRotation.CLOCKWISE_90), BlockMirror.NONE, roomCollection.getFloorNumber()));
-			} else if (doorDirection == Direction.NORTH && roomDirection == Direction.WEST) {
+			} else if (doorDirection == BlockDirection.NORTH && roomDirection == BlockDirection.WEST) {
 				BPos finalBPos = start.relative(rotation.rotate(BlockDirection.EAST), 7);
 				finalBPos = finalBPos.relative(rotation.rotate(BlockDirection.SOUTH), 6);
 				mansionPieces.add(new MansionPiece(roomCollection.get1x2SideEntrance(this.random, isStairs), finalBPos, rotation.getRotated(BlockRotation.CLOCKWISE_90), BlockMirror.FRONT_BACK, roomCollection.getFloorNumber()));
-			} else if (doorDirection == Direction.NORTH && roomDirection == Direction.EAST) {
+			} else if (doorDirection == BlockDirection.NORTH && roomDirection == BlockDirection.EAST) {
 				BPos finalBPos = start.relative(rotation.rotate(BlockDirection.EAST), 1);
 				finalBPos = finalBPos.relative(rotation.rotate(BlockDirection.SOUTH), 6);
 				mansionPieces.add(new MansionPiece(roomCollection.get1x2SideEntrance(this.random, isStairs), finalBPos, rotation.getRotated(BlockRotation.COUNTERCLOCKWISE_90), BlockMirror.NONE, roomCollection.getFloorNumber()));
-			} else if (doorDirection == Direction.SOUTH && roomDirection == Direction.NORTH) {
+			} else if (doorDirection == BlockDirection.SOUTH && roomDirection == BlockDirection.NORTH) {
 				BPos finalBPos = start.relative(rotation.rotate(BlockDirection.EAST), 1);
 				finalBPos = finalBPos.relative(rotation.rotate(BlockDirection.NORTH), 8);
 				mansionPieces.add(new MansionPiece(roomCollection.get1x2FrontEntrance(this.random, isStairs), finalBPos, rotation, BlockMirror.NONE, roomCollection.getFloorNumber()));
-			} else if (doorDirection == Direction.NORTH && roomDirection == Direction.SOUTH) {
+			} else if (doorDirection == BlockDirection.NORTH && roomDirection == BlockDirection.SOUTH) {
 				BPos finalBPos = start.relative(rotation.rotate(BlockDirection.EAST), 7);
 				finalBPos = finalBPos.relative(rotation.rotate(BlockDirection.SOUTH), 14);
 				mansionPieces.add(new MansionPiece(roomCollection.get1x2FrontEntrance(this.random, isStairs), finalBPos, rotation.getRotated(BlockRotation.CLOCKWISE_180), BlockMirror.NONE, roomCollection.getFloorNumber()));
-			} else if (doorDirection == Direction.WEST && roomDirection == Direction.EAST) {
+			} else if (doorDirection == BlockDirection.WEST && roomDirection == BlockDirection.EAST) {
 				BPos finalBPos = start.relative(rotation.rotate(BlockDirection.EAST), 15);
 				mansionPieces.add(new MansionPiece(roomCollection.get1x2FrontEntrance(this.random, isStairs), finalBPos, rotation.getRotated(BlockRotation.CLOCKWISE_90), BlockMirror.NONE, roomCollection.getFloorNumber()));
-			} else if (doorDirection == Direction.EAST && roomDirection == Direction.WEST) {
+			} else if (doorDirection == BlockDirection.EAST && roomDirection == BlockDirection.WEST) {
 				BPos finalBPos = start.relative(rotation.rotate(BlockDirection.WEST), 7);
 				finalBPos = finalBPos.relative(rotation.rotate(BlockDirection.SOUTH), 6);
 				mansionPieces.add(new MansionPiece(roomCollection.get1x2FrontEntrance(this.random, isStairs), finalBPos, rotation.getRotated(BlockRotation.COUNTERCLOCKWISE_90), BlockMirror.NONE, roomCollection.getFloorNumber()));
-			} else if (doorDirection == Direction.UP && roomDirection == Direction.EAST) {
+			} else if (doorDirection == BlockDirection.UP && roomDirection == BlockDirection.EAST) {
 				BPos finalBPos = start.relative(rotation.rotate(BlockDirection.EAST), 15);
 				mansionPieces.add(new MansionPiece(roomCollection.get1x2Secret(this.random), finalBPos, rotation.getRotated(BlockRotation.CLOCKWISE_90), BlockMirror.NONE, roomCollection.getFloorNumber()));
-			} else if (doorDirection == Direction.UP && roomDirection == Direction.SOUTH) {
+			} else if (doorDirection == BlockDirection.UP && roomDirection == BlockDirection.SOUTH) {
 				BPos blockpos = start.relative(rotation.rotate(BlockDirection.EAST), 1);
 				blockpos = blockpos.relative(rotation.rotate(BlockDirection.NORTH), 0);
 				mansionPieces.add(new MansionPiece(roomCollection.get1x2Secret(this.random), blockpos, rotation, BlockMirror.NONE, roomCollection.getFloorNumber()));
@@ -607,40 +553,40 @@ public class MansionGenerator extends Generator {
 
 		}
 
-		private void addRoom2x2(List<MansionPiece> mansionPieces, BPos start, BlockRotation rotation, Direction roomDirection, Direction doorDirection, RoomCollection roomCollection) {
+		private void addRoom2x2(List<MansionPiece> mansionPieces, BPos start, BlockRotation rotation, BlockDirection roomDirection, BlockDirection doorDirection, RoomCollection roomCollection) {
 			int offsetX = 0;
 			int offetZ = 0;
 			BlockRotation roomRotation = rotation;
 			BlockMirror mirror = BlockMirror.NONE;
-			if (doorDirection == Direction.EAST && roomDirection == Direction.SOUTH) {
+			if (doorDirection == BlockDirection.EAST && roomDirection == BlockDirection.SOUTH) {
 				offsetX = -7;
-			} else if (doorDirection == Direction.EAST && roomDirection == Direction.NORTH) {
+			} else if (doorDirection == BlockDirection.EAST && roomDirection == BlockDirection.NORTH) {
 				offsetX = -7;
 				offetZ = 6;
 				mirror = BlockMirror.LEFT_RIGHT;
-			} else if (doorDirection == Direction.NORTH && roomDirection == Direction.EAST) {
+			} else if (doorDirection == BlockDirection.NORTH && roomDirection == BlockDirection.EAST) {
 				offsetX = 1;
 				offetZ = 14;
 				roomRotation = rotation.getRotated(BlockRotation.COUNTERCLOCKWISE_90);
-			} else if (doorDirection == Direction.NORTH && roomDirection == Direction.WEST) {
+			} else if (doorDirection == BlockDirection.NORTH && roomDirection == BlockDirection.WEST) {
 				offsetX = 7;
 				offetZ = 14;
 				roomRotation = rotation.getRotated(BlockRotation.COUNTERCLOCKWISE_90);
 				mirror = BlockMirror.LEFT_RIGHT;
-			} else if (doorDirection == Direction.SOUTH && roomDirection == Direction.WEST) {
+			} else if (doorDirection == BlockDirection.SOUTH && roomDirection == BlockDirection.WEST) {
 				offsetX = 7;
 				offetZ = -8;
 				roomRotation = rotation.getRotated(BlockRotation.CLOCKWISE_90);
-			} else if (doorDirection == Direction.SOUTH && roomDirection == Direction.EAST) {
+			} else if (doorDirection == BlockDirection.SOUTH && roomDirection == BlockDirection.EAST) {
 				offsetX = 1;
 				offetZ = -8;
 				roomRotation = rotation.getRotated(BlockRotation.CLOCKWISE_90);
 				mirror = BlockMirror.LEFT_RIGHT;
-			} else if (doorDirection == Direction.WEST && roomDirection == Direction.NORTH) {
+			} else if (doorDirection == BlockDirection.WEST && roomDirection == BlockDirection.NORTH) {
 				offsetX = 15;
 				offetZ = 6;
 				roomRotation = rotation.getRotated(BlockRotation.CLOCKWISE_180);
-			} else if (doorDirection == Direction.WEST && roomDirection == Direction.SOUTH) {
+			} else if (doorDirection == BlockDirection.WEST && roomDirection == BlockDirection.SOUTH) {
 				offsetX = 15;
 				mirror = BlockMirror.FRONT_BACK;
 			}
@@ -663,19 +609,19 @@ public class MansionGenerator extends Generator {
 
 		public abstract int getFloorNumber();
 
-		public abstract String get1x1(Random random);
+		public abstract String get1x1(ChunkRand random);
 
-		public abstract String get1x1Secret(Random random);
+		public abstract String get1x1Secret(ChunkRand random);
 
-		public abstract String get1x2SideEntrance(Random random, boolean isStairs);
+		public abstract String get1x2SideEntrance(ChunkRand random, boolean isStairs);
 
-		public abstract String get1x2FrontEntrance(Random random, boolean isStairs);
+		public abstract String get1x2FrontEntrance(ChunkRand random, boolean isStairs);
 
-		public abstract String get1x2Secret(Random random);
+		public abstract String get1x2Secret(ChunkRand random);
 
-		public abstract String get2x2(Random random);
+		public abstract String get2x2(ChunkRand random);
 
-		public abstract String get2x2Secret(Random random);
+		public abstract String get2x2Secret(ChunkRand random);
 	}
 
 	static class FirstFloor extends RoomCollection {
@@ -688,37 +634,37 @@ public class MansionGenerator extends Generator {
 		}
 
 		@Override
-		public String get1x1(Random random) {
+		public String get1x1(ChunkRand random) {
 			return "1x1_a" + (random.nextInt(5) + 1);
 		}
 
 		@Override
-		public String get1x1Secret(Random random) {
+		public String get1x1Secret(ChunkRand random) {
 			return "1x1_as" + (random.nextInt(4) + 1);
 		}
 
 		@Override
-		public String get1x2SideEntrance(Random random, boolean isStairs) {
+		public String get1x2SideEntrance(ChunkRand random, boolean isStairs) {
 			return "1x2_a" + (random.nextInt(9) + 1);
 		}
 
 		@Override
-		public String get1x2FrontEntrance(Random random, boolean isStairs) {
+		public String get1x2FrontEntrance(ChunkRand random, boolean isStairs) {
 			return "1x2_b" + (random.nextInt(5) + 1);
 		}
 
 		@Override
-		public String get1x2Secret(Random random) {
+		public String get1x2Secret(ChunkRand random) {
 			return "1x2_s" + (random.nextInt(2) + 1);
 		}
 
 		@Override
-		public String get2x2(Random random) {
+		public String get2x2(ChunkRand random) {
 			return "2x2_a" + (random.nextInt(4) + 1);
 		}
 
 		@Override
-		public String get2x2Secret(Random random) {
+		public String get2x2Secret(ChunkRand random) {
 			return "2x2_s1";
 		}
 	}
@@ -733,37 +679,37 @@ public class MansionGenerator extends Generator {
 		}
 
 		@Override
-		public String get1x1(Random random) {
+		public String get1x1(ChunkRand random) {
 			return "1x1_b" + (random.nextInt(4) + 1);
 		}
 
 		@Override
-		public String get1x1Secret(Random random) {
+		public String get1x1Secret(ChunkRand random) {
 			return "1x1_as" + (random.nextInt(4) + 1);
 		}
 
 		@Override
-		public String get1x2SideEntrance(Random random, boolean isStairs) {
+		public String get1x2SideEntrance(ChunkRand random, boolean isStairs) {
 			return isStairs ? "1x2_c_stairs" : "1x2_c" + (random.nextInt(4) + 1);
 		}
 
 		@Override
-		public String get1x2FrontEntrance(Random random, boolean isStairs) {
+		public String get1x2FrontEntrance(ChunkRand random, boolean isStairs) {
 			return isStairs ? "1x2_d_stairs" : "1x2_d" + (random.nextInt(5) + 1);
 		}
 
 		@Override
-		public String get1x2Secret(Random random) {
+		public String get1x2Secret(ChunkRand random) {
 			return "1x2_se" + (random.nextInt(1) + 1);
 		}
 
 		@Override
-		public String get2x2(Random random) {
+		public String get2x2(ChunkRand random) {
 			return "2x2_b" + (random.nextInt(5) + 1);
 		}
 
 		@Override
-		public String get2x2Secret(Random random) {
+		public String get2x2Secret(ChunkRand random) {
 			return "2x2_s1";
 		}
 	}
@@ -775,109 +721,6 @@ public class MansionGenerator extends Generator {
 		@Override
 		public int getFloorNumber() {
 			return 2;
-		}
-	}
-
-	enum Direction {
-		DOWN(Axis.Y, new Vec3i(0, -1, 0)),
-		UP(Axis.Y, new Vec3i(0, 1, 0)),
-		NORTH(Axis.Z, new Vec3i(0, 0, -1)), // NONE
-		SOUTH(Axis.Z, new Vec3i(0, 0, 1)), // CLOCKWISE_180
-		WEST(Axis.X, new Vec3i(-1, 0, 0)), // COUNTERCLOCKWISE_90
-		EAST(Axis.X, new Vec3i(1, 0, 0)); // CLOCKWISE_90
-
-		private static final Direction[] VALUES = values();
-		private static final Direction[] HORIZONTALS = {Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST};
-		private static final Direction[] BY_2D_DATA = {Direction.SOUTH, Direction.WEST, Direction.NORTH, Direction.EAST};
-
-		private static final Map<String, Direction> STRING_TO_BLOCK_DIRECTION = Arrays.stream(values()).collect(Collectors.toMap(Direction::name, o -> o));
-		private final Axis axis;
-		private final Vec3i vec;
-
-		Direction(Axis axis, Vec3i vec) {
-			this.axis = axis;
-			this.vec = vec;
-		}
-
-		public int getStepX() {
-			return this.vec.getX();
-		}
-
-		public int getStepY() {
-			return this.vec.getY();
-		}
-
-		public int getStepZ() {
-			return this.vec.getZ();
-		}
-
-		public static Direction from2DDataValue(int value) {
-			return BY_2D_DATA[Math.abs(value % BY_2D_DATA.length)];
-		}
-
-		public Direction getOpposite() {
-			switch(this) {
-				case DOWN:
-					return UP;
-				case UP:
-					return DOWN;
-				case NORTH:
-					return SOUTH;
-				case SOUTH:
-					return NORTH;
-				case WEST:
-					return EAST;
-				case EAST:
-					return WEST;
-				default:
-					throw new IllegalStateException("Invalid direction: " + this);
-			}
-		}
-
-		public Direction getClockWise() {
-			switch(this) {
-				case NORTH:
-					return EAST;
-				case SOUTH:
-					return WEST;
-				case WEST:
-					return NORTH;
-				case EAST:
-					return SOUTH;
-				default:
-					throw new IllegalStateException("Unable to to get CW facing of " + this);
-			}
-		}
-
-		public Direction getCounterClockWise() {
-			switch(this) {
-				case NORTH:
-					return WEST;
-				case SOUTH:
-					return EAST;
-				case WEST:
-					return SOUTH;
-				case EAST:
-					return NORTH;
-				default:
-					throw new IllegalStateException("Unable to get CCW facing of " + this);
-			}
-		}
-
-		public enum Axis {
-			X, Y, Z;
-
-			public Axis get2DRotated() {
-				switch (this) {
-					case X:
-						return Z;
-					case Z:
-						return X;
-					default:
-						return Y;
-				}
-			}
-
 		}
 	}
 
